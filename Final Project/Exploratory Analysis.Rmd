@@ -1,0 +1,160 @@
+---
+title: "Exploratory Analysis of Final Project"
+output: github_document
+author: "Alvin Zhu"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+```
+
+## Introduction
+The analysis was performed using Wisconsin breast cancer data sets from the UCI Machine Learning Database.   
+The reasons of principal component analysis and other dimensionality reduction techniques are described in detail. A linear discriminant function is constructed to predict the new observed value.
+Discriminant Analysis is a classification method that uses a "training sample" of a known category to establish Discriminant criteria and to classify data of an unknown category by using predictive variables. Linear Discriminant Analysis (LDA) is one of the classical algorithms of pattern recognition, introduced by Belhumeur to the field of pattern recognition and artificial intelligence in 1996. LDA is based on Bayes discriminant thought. Under the condition that there are only two kinds of classification and the whole population obeys multivariate normal distribution, Bayes discriminant is equivalent to Fisher discriminant and distance discriminant.   
+The basic idea is to project the high-dimensional model samples to the best discriminant vector space, so as to extract the classification information and compress the dimension of feature space. After projection, the model samples are guaranteed to have the maximum inter-class distance and the minimum inter-class distance in the new subspace, that is, the model has the best separability in this space.
+
+## Problem statement
+Using this 32-variable dataset to measure the size and shape of the nucleus, the goal is to create a model that allows us to predict whether a breast cancer cell is benign or malignant.
+
+## Data set discription
+The features were calculated from digital images of a breast mass by fine-needle aspiration (FNA). They describe the characteristics of the nucleus in the image. Our dataset consists of 569 observations and 32 variables. There's an ID variable, a diagnostic variable that says whether they're benign or malignant, and 30 measurement variables that detail the size and shape of the nucleus. Diagnosis is a categorical variable, which is our response variable, and these 30 measurement variables are all continuous, which are the potential explanatory variables of our model.
+* radius
+* texture 
+* perimeter
+* area
+* smoothness 
+* compactness 
+* concavity 
+* concave points 
+* symmetry
+* fractal dimension
+
+## Importing data
+
+```{r}
+data <- read.csv("data.csv")
+dim(data)
+head(data)
+```
+
+## Exploratory data analysis
+
+```{r}
+wdbc.data <- as.matrix(data[, c(3:32)])
+row.names(wdbc.data) <- data$id
+diagnosis <- as.numeric(data$diagnosis == "M")
+table(data$diagnosis)
+```
+
+```{r}
+library(corrplot)
+cor.matrix <- data[, c(3:32)]
+correlation <- round(cor(cor.matrix), 2)
+cor(cor.matrix)
+corrplot(correlation, diag = FALSE, method = "color", order = "FPC", tl.srt = 90)
+```
+
+As you can see from corrplot, there are many variables that are highly correlated with each other.
+
+```{r}
+drop.list = c('perimeter_mean', 'area_mean', 'compactness_mean', 'concave points_mean', 'radius_se', 'perimeter_se', 'radius_worst',
+              'perimeter_worst', 'compactness_worst', 'concave points_worst', 'compactness_se', 'concave points_se', 'texture_worst', 
+              'area_worst')
+wdbc.data <- as.data.frame(wdbc.data)
+droped.data <- wdbc.data[, !names(wdbc.data) %in% drop.list]
+```
+
+## Principal Components Analysis
+Because of the large number of variables in the model, we can try to use dimensionality reduction techniques to uncover any pattern in the data. As mentioned in the exploratory data analysis section, there are 30 variables that, when combined, can be used to model the diagnosis of each patient. Using principal component analysis, we can combine many of our variables into different linear combinations, each of which explains part of the variance of the model. By using PCA, we assume a linear combination of variables in the dataset. We can reduce the complexity of the model by selecting only linear combinations that provide the majority (>= 85%) of the covariances. Then we can more easily see how the model works and provide meaningful graphs and representations of complex data sets.
+
+### Running PCA using correlation matrix
+
+```{r}
+wdbc.pr <- princomp(droped.data, cor = TRUE)
+screeplot(wdbc.pr, type = "lines")
+```
+
+```{r}
+summary(wdbc.pr)
+```
+
+```{r}
+wdbc.pr$loadings
+```
+
+```{r}
+wdbc.pr$scores[, 1:6]  # principal component score
+```
+
+The 89% change is explained by the first six PCS.
+
+## Linear Discriminant Analysis (LDA)
+It can be seen from the scatter diagram of principal components that there is a certain number of benign and malignant point clustering. This shows that we can use these principal components to establish a linear discriminant function. Now that we have the chosen principal component we can do a linear discriminant analysis.
+
+### Model building and validation
+* Modeling with training data
+* Use test data to make predictions
+* Evaluating model performance
+
+```{r}
+ls(wdbc.pr)
+```
+
+```{r}
+wdbc.pcs <- wdbc.pr$scores[, 1:6]
+head(wdbc.pcs, 10)
+```
+
+```{r}
+wdbc.pcst <- cbind(wdbc.pcs, diagnosis)
+head(wdbc.pcst)
+```
+
+```{r}
+N <- nrow(wdbc.pcst)  
+rvec <- runif(N) 
+
+wdbc.pcst.train <- wdbc.pcst[rvec < 0.75, ]
+wdbc.pcst.test <- wdbc.pcst[rvec >= 0.75, ]
+train.row.num <- nrow(wdbc.pcst.train)
+test.row.num <- nrow(wdbc.pcst.test)
+print(train.row.num)
+print(test.row.num)
+print(train.row.num/(train.row.num + test.row.num))
+```
+
+```{r}
+library(MASS)
+
+# convert matrix to a dataframe
+wdbc.pcst.train.df <- as.data.frame(wdbc.pcst.train)
+
+# Perform LDA on diagnosis
+wdbc.lda <- lda(diagnosis ~ Comp.1 + Comp.2 + Comp.3 + Comp.4 + Comp.5 + Comp.6, data = wdbc.pcst.train.df)
+
+wdbc.lda
+```
+
+```{r}
+# convert matrix to a dataframe
+wdbc.pcst.test.df <- as.data.frame(wdbc.pcst.test)
+
+wdbc.lda.predict <- predict(wdbc.lda, newdata = wdbc.pcst.test.df)
+```
+
+```{r}
+# print the predictions
+wdbc.lda.predict.class <- wdbc.lda.predict$class
+wdbc.lda.predict.class <- as.data.frame(wdbc.lda.predict.class)
+cbind(wdbc.pcst.test.df$diagnosis, wdbc.lda.predict.class)
+```
+
+```{r}
+tab <- table(wdbc.pcst.test.df$diagnosis, wdbc.lda.predict$class)
+tab
+```
+
+```{r}
+sum(diag(prop.table(tab)))
+```
